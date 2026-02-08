@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Arcade Hub – Dino Runner</title>
+
+<style>
+  body {
+    margin: 0;
+    background: #0b0f1a;
+    color: #ff8a8a;
+    font-family: "Comic Sans MS", "Comic Sans", cursive;
+    text-align: center;
+  }
+
+  .hidden { display: none; }
+
+  #hub, #game {
+    padding: 30px;
+  }
+
+  h1 {
+    color: #4dd2ff;
+  }
+
+  .menu {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 16px;
+    max-width: 700px;
+    margin: 40px auto;
+  }
+
+  button {
+    background: #151b2e;
+    border: 2px solid #4dd2ff;
+    color: white;
+    padding: 15px;
+    cursor: pointer;
+  }
+
+  button:hover {
+    background: #4dd2ff;
+    color: black;
+  }
+
+  canvas {
+    background: #111;
+    border: 2px solid #4dd2ff;
+    margin-top: 20px;
+  }
+
+  /* ================================
+   GAMEBOY INFO PANEL
+================================ */
+.gameboy-panel {
+  margin: 24px auto 60px; /* space above footer */
+  display: flex;
+  justify-content: center;
+  max-width: 100%;
+}
+
+.gameboy-screen {
+  width: 600px;              /* reduced width */
+  max-width: 90%;
+  padding: 16px 18px;
+
+  background: rgba(20, 30, 45, 0.55);
+  backdrop-filter: blur(14px) saturate(120%);
+  -webkit-backdrop-filter: blur(14px) saturate(120%);
+
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+
+  box-shadow:
+    0 8px 30px rgba(0, 0, 0, 0.6),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+
+  color: #ffd6d6; /* light red text */
+}
+
+.profile {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+}
+
+.profile img {
+  width: 80px;
+  height: 80px;
+  border-radius: 10px;
+  object-fit: cover;
+
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  box-shadow: 0 0 12px rgba(255, 255, 255, 0.15);
+}
+
+.profile-text .label {
+  color: #ff8a8a; /* light red */
+}
+
+.profile-text .value {
+  color: #9fffcf; /* light pastel green */
+}
+
+
+.profile-text h2 {
+  margin: 0 0 6px 0;
+  font-size: 14px;
+  letter-spacing: 1px;
+  color: #ffffff;
+}
+
+.profile-text p {
+  margin: 2px 0;
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+.stats {
+  margin-top: 10px;
+  font-size: 11px;
+  opacity: 0.85;
+}
+
+</style>
+</head>
+
+<body>
+
+<!-- HUB -->
+<div id="hub">
+  <h1>🎮 Arcade Hub – Classics</h1>
+  <p>Select a game</p>
+
+  <div class="menu">
+    <button onclick="startDino()">Dino Runner</button>
+    <button onclick="startBrickBreaker()">Brick Breaker</button>
+    <button disabled>Snake</button>
+    <button disabled>Pac-Man</button>
+    <button disabled>Galaga</button>
+    <button disabled>Tetris</button>
+  </div>
+
+  <!-- GAMEBOY INFO PANEL -->
+<div class="gameboy-panel">
+  <div class="gameboy-screen">
+
+    <div class="profile">
+      <img src="profile.png" alt="Abhishek Dube">
+
+      <div class="profile-text">
+        <h2>PLAYER PROFILE</h2>
+        <p>
+            <span class="label">Name:</span>
+            <span class="value">Abhishek Dube</span>
+        </p>
+
+        <p>
+            <span class="label">Alias:</span>
+            <span class="value">TheGameForge</span>
+        </p>
+
+        <p>
+            <span class="label">Class:</span>
+            <span class="value">Game Producer / QA Mage</span>
+        </p>
+
+        <p>
+            <span class="label">Specialty:</span>
+            <span class="value">Game Feel, Polish, Systems</span>
+        </p>
+
+        <p>
+            <span class="label">Current Quest:</span><br>
+            <span class="value">
+            Building ArcadeHub — a modular arcade of classic games with modern feel.
+            </span>
+        </p>
+
+
+      </div>
+    </div>
+
+    <div class="stats">
+      <p>🎮 Favorite Genres: Arcade · Runner · Puzzle</p>
+      <p>⚙️ Tools: Unity · Web · Systems Design</p>
+      <p>🔥 Motto: “If it doesn’t feel right, it isn’t done.”</p>
+    </div>
+
+  </div>
+</div>
+
+<!-- FOOTER -->
+<div style="
+  position: fixed;
+  bottom: 10px;
+  width: 100%;
+  text-align: center;
+  font-size: 12px;
+  opacity: 0.7;
+">
+  This is <strong>ArcadeHub</strong>, an experimental project made by 
+  <strong>TheGameForge!</strong><br>
+  Creator: <strong>Abhishek Dube</strong> · 
+  <a href="about.html" style="color:#4dd2ff; text-decoration:none;">
+    About Us
+  </a>
+</div>
+
+
+<!-- GAME -->
+<div id="game" class="hidden">
+  <h1>Dino Runner</h1>
+  <p>SPACE = Jump · ESC = Exit</p>
+  <div id="score">Score: 0</div>
+  <canvas id="canvas" width="800" height="300"></canvas>
+</div>
+
+<script>
+//#region Core References
+const hub = document.getElementById("hub");
+const game = document.getElementById("game");
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+const scoreText = document.getElementById("score");
+
+let running = false;
+let frame = null;
+let currentGame = null;
+
+//#region Shared Helpers
+function startGame(gameName) {
+  hub.classList.add("hidden");
+  game.classList.remove("hidden");
+  running = true;
+  currentGame = gameName;
+}
+
+function exitGame() {
+  running = false;
+  cancelAnimationFrame(frame);
+  currentGame = null;
+  hub.classList.remove("hidden");
+  game.classList.add("hidden");
+}
+//#endregion
+//#region Audio Manager (Global)
+const AudioManager = {
+  ctx: null,
+  unlocked: false,
+
+  init() {
+    if (this.ctx) return;
+    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+  },
+
+  unlock() {
+    if (this.unlocked) return;
+    this.init();
+
+    // Play a silent sound to unlock
+    const buffer = this.ctx.createBuffer(1, 1, 22050);
+    const source = this.ctx.createBufferSource();
+    source.buffer = buffer;
+    source.connect(this.ctx.destination);
+    source.start(0);
+
+    this.unlocked = true;
+  },
+
+  play(freq = 440, duration = 0.1, type = "square", volume = 0.2) {
+    if (!this.unlocked) return;
+
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+
+    osc.type = type;
+    osc.frequency.value = freq;
+
+    gain.gain.value = volume;
+
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+
+    osc.start();
+    osc.stop(this.ctx.currentTime + duration);
+  }
+};
+
+//#endregion
+
+//#region Dino Game
+const DINO_GROUND_Y = 220;
+
+const dino = {
+  x: 50,
+  y: DINO_GROUND_Y,
+  w: 40,
+  h: 40,
+  vy: 0,
+  grounded: true,
+  jumpHeld: false,
+  coyoteTimer: 0,
+  bufferTimer: 0,
+  scaleX: 1,
+  scaleY: 1
+};
+
+const DINO_JUMP_VELOCITY = -10.5;
+const DINO_GRAVITY_UP = 0.45;
+const DINO_GRAVITY_RELEASE = 1.2;
+const DINO_GRAVITY_FALL = 1.6;
+const COYOTE_TIME = 6;
+const JUMP_BUFFER_TIME = 6;
+
+let dinoSpeed = 6;
+let dinoScore = 0;
+let dinoObstacles = [];
+
+function startDino() {
+  document.querySelector("#game h1").innerText = "Dino Runner";
+  scoreText.innerText = "Score: 0";
+  startGame("dino");
+  resetDino();
+  frame = requestAnimationFrame(dinoLoop);
+}
+
+function resetDino() {
+  dino.y = DINO_GROUND_Y;
+  dino.vy = 0;
+  dino.grounded = true;
+  dino.jumpHeld = false;
+  dino.coyoteTimer = 0;
+  dino.bufferTimer = 0;
+  dino.scaleX = dino.scaleY = 1;
+  dinoSpeed = 6;
+  dinoScore = 0;
+  dinoObstacles = [];
+}
+
+function dinoLoop() {
+  if (!running || currentGame !== "dino") return;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Ground
+  ctx.fillStyle = "#4dd2ff";
+  ctx.fillRect(0, 260, canvas.width, 4);
+
+  // Timers
+  if (!dino.grounded && dino.coyoteTimer > 0) dino.coyoteTimer--;
+  if (dino.bufferTimer > 0) dino.bufferTimer--;
+
+  // Gravity & jump shaping
+  if (dino.vy < 0) {
+    dino.vy += dino.jumpHeld ? DINO_GRAVITY_UP : DINO_GRAVITY_RELEASE;
+  } else {
+    dino.vy += DINO_GRAVITY_FALL;
+  }
+
+  dino.y += dino.vy;
+
+  // Ground collision
+  if (dino.y >= DINO_GROUND_Y) {
+    dino.y = DINO_GROUND_Y;
+    dino.vy = 0;
+    if (!dino.grounded) {
+      dino.scaleX = 1.1;
+      dino.scaleY = 0.9;
+    }
+    dino.grounded = true;
+    dino.coyoteTimer = COYOTE_TIME;
+    if (dino.bufferTimer > 0) performDinoJump();
+  } else {
+    dino.grounded = false;
+  }
+
+  // Recover squash/stretch
+  dino.scaleX += (1 - dino.scaleX) * 0.2;
+  dino.scaleY += (1 - dino.scaleY) * 0.2;
+
+  // Draw dino
+  ctx.save();
+  ctx.translate(dino.x + dino.w / 2, dino.y + dino.h / 2);
+  ctx.scale(dino.scaleX, dino.scaleY);
+  ctx.fillStyle = "#00ff88";
+  ctx.fillRect(-dino.w / 2, -dino.h / 2, dino.w, dino.h);
+  ctx.restore();
+
+  // Obstacles
+  if (Math.random() < 0.015) {
+    dinoObstacles.push({ x: canvas.width, y: 230, w: 20, h: 30 });
+  }
+
+  ctx.fillStyle = "#ff4444";
+  dinoObstacles.forEach(o => {
+    o.x -= dinoSpeed;
+    ctx.fillRect(o.x, o.y, o.w, o.h);
+
+    if (
+      dino.x < o.x + o.w &&
+      dino.x + dino.w > o.x &&
+      dino.y < o.y + o.h &&
+      dino.y + dino.h > o.y
+    ) {
+      alert("Game Over! Score: " + dinoScore);
+      AudioManager.play(120, 0.3, "sawtooth", 0.4);
+      exitGame();
+    }
+  });
+
+  dinoObstacles = dinoObstacles.filter(o => o.x + o.w > 0);
+
+  dinoScore++;
+  dinoSpeed += 0.001;
+  scoreText.innerText = "Score: " + dinoScore;
+
+  frame = requestAnimationFrame(dinoLoop);
+}
+
+function performDinoJump() {
+  dino.vy = DINO_JUMP_VELOCITY;
+  dino.jumpHeld = true;
+  dino.coyoteTimer = 0;
+  dino.bufferTimer = 0;
+  dino.scaleX = 0.92;
+  dino.scaleY = 1.08;
+
+  AudioManager.play(600, 0.08, "square", 0.25);
+}
+
+//#endregion
+
+//#region Brick Breaker
+let brickScore = 0;
+let ballLaunched = false;
+
+// Paddle
+const paddle = {
+  w: 110,
+  h: 14,
+  x: canvas.width / 2 - 55,
+  y: canvas.height - 30,
+  speed: 9,
+  dx: 0
+};
+
+// Ball
+const ball = {
+  x: canvas.width / 2,
+  y: canvas.height - 50,
+  r: 8,
+  dx: 4,
+  dy: -4
+};
+
+// Bricks
+const brickCfg = {
+  rows: 5,
+  cols: 8,
+  w: 80,
+  h: 20,
+  pad: 10,
+  offX: 35,
+  offY: 40
+};
+
+let bricks = [];
+
+function startBrickBreaker() {
+  document.querySelector("#game h1").innerText = "Brick Breaker";
+  scoreText.innerText = "Score: 0";
+  startGame("brick");
+  resetBrickBreaker();
+  frame = requestAnimationFrame(brickLoop);
+}
+
+function resetBrickBreaker() {
+  brickScore = 0;
+
+  paddle.x = canvas.width / 2 - paddle.w / 2;
+  paddle.dx = 0;
+
+  ball.x = canvas.width / 2;
+  ball.y = canvas.height - 50;
+  ball.dx = 4;
+  ball.dy = -4;
+
+  bricks = [];
+  for (let r = 0; r < brickCfg.rows; r++) {
+    for (let c = 0; c < brickCfg.cols; c++) {
+      bricks.push({
+        x: brickCfg.offX + c * (brickCfg.w + brickCfg.pad),
+        y: brickCfg.offY + r * (brickCfg.h + brickCfg.pad),
+        alive: true
+      });
+    }
+  }
+
+  ballLaunched = false;
+}
+
+function brickLoop() {
+  if (!running || currentGame !== "brick") return;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Paddle
+  ctx.fillStyle = "#00ff88";
+  ctx.fillRect(paddle.x, paddle.y, paddle.w, paddle.h);
+
+  // Ball
+  ctx.fillStyle = "#ffffff";
+  ctx.beginPath();
+  ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Bricks
+  bricks.forEach(b => {
+    if (!b.alive) return;
+    ctx.fillStyle = "#ff4444";
+    ctx.fillRect(b.x, b.y, brickCfg.w, brickCfg.h);
+
+    if (
+      ballLaunched &&
+      ball.x > b.x &&
+      ball.x < b.x + brickCfg.w &&
+      ball.y - ball.r < b.y + brickCfg.h &&
+      ball.y + ball.r > b.y
+    ) {
+      ball.dy *= -1;
+      b.alive = false;
+      brickScore += 10;
+      AudioManager.play(800, 0.07, "triangle", 0.25);
+      scoreText.innerText = "Score: " + brickScore;
+    }
+  });
+
+  // Ball behavior
+  if (!ballLaunched) {
+    // Stick to paddle
+    ball.x = paddle.x + paddle.w / 2;
+    ball.y = paddle.y - ball.r;
+  } else {
+    ball.x += ball.dx;
+    ball.y += ball.dy;
+  }
+
+  // Wall collision
+  if (ballLaunched) {
+    if (ball.x + ball.r > canvas.width || ball.x - ball.r < 0) {
+      ball.dx *= -1;
+       AudioManager.play(200, 0.04, "square", 0.15);
+    }
+    if (ball.y - ball.r < 0) {
+      ball.dy *= -1;
+       AudioManager.play(200, 0.04, "square", 0.15);
+    }
+   
+  }
+
+  // Paddle collision
+  if (
+    ballLaunched &&
+    ball.x > paddle.x &&
+    ball.x < paddle.x + paddle.w &&
+    ball.y + ball.r > paddle.y
+  ) {
+    const hitPos = (ball.x - paddle.x) / paddle.w - 0.5;
+    ball.dx = hitPos * 8;
+    ball.dy = -Math.abs(ball.dy);
+    AudioManager.play(300, 0.05, "square", 0.2);
+
+  }
+
+  // Lose condition
+  if (ballLaunched && ball.y - ball.r > canvas.height) {
+    AudioManager.play(100, 0.4, "sawtooth", 0.4);
+    alert("Game Over! Score: " + brickScore);
+    exitGame();
+    return;
+  }
+
+  // Win condition
+  if (bricks.every(b => !b.alive)) {
+    alert("You Win!");
+    resetBrickBreaker();
+  }
+
+  // Paddle movement
+  paddle.x += paddle.dx;
+  paddle.x = Math.max(0, Math.min(canvas.width - paddle.w, paddle.x));
+
+  frame = requestAnimationFrame(brickLoop);
+}
+//#endregion
+
+/* ======================================================
+   PLACEHOLDERS FOR FUTURE GAMES
+====================================================== */
+// GAME 3 — SNAKE
+function startSnake() {
+  console.log("Snake game not implemented yet");
+}
+
+// GAME 4 — PAC-MAN
+function startPacMan() {
+  console.log("Pac-Man game not implemented yet");
+}
+
+// GAME 5 — GALAGA
+function startGalaga() {
+  console.log("Galaga game not implemented yet");
+}
+
+// GAME 6 — TETRIS
+function startTetris() {
+  console.log("Tetris game not implemented yet");
+}
+
+/* ======================================================
+   INPUT ROUTING
+====================================================== */
+document.addEventListener("keydown", e => {
+  if (!running) return;
+
+   AudioManager.unlock();
+  if (currentGame === "dino") {
+    if (e.code === "Space") {
+      if (dino.grounded || dino.coyoteTimer > 0) performDinoJump();
+      else dino.bufferTimer = JUMP_BUFFER_TIME;
+    }
+  }
+
+  if (currentGame === "brick") {
+
+  // 🔥 THIS IS THE MISSING LINE
+  if (!ballLaunched) {
+    ballLaunched = true;
+    AudioManager.play(500, 0.1, "square", 0.25);
+  }
+
+  if (e.code === "ArrowLeft") paddle.dx = -paddle.speed;
+  if (e.code === "ArrowRight") paddle.dx = paddle.speed;
+}
+
+  if (e.code === "Escape") exitGame();
+});
+
+document.addEventListener("keyup", e => {
+  if (currentGame === "dino" && e.code === "Space") {
+    dino.jumpHeld = false;
+  }
+
+  if (currentGame === "brick") {
+    if (e.code === "ArrowLeft" || e.code === "ArrowRight") paddle.dx = 0;
+  }
+});
+
+document.addEventListener("mousedown", () => {
+  AudioManager.unlock();
+})
+
+</script>
+
+</body>
+</html>
