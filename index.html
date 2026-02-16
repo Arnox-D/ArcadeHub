@@ -44,10 +44,26 @@
     color: black;
   }
 
+  button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  button:disabled:hover {
+    background: #151b2e;
+    color: white;
+  }
+
   canvas {
     background: #111;
     border: 2px solid #4dd2ff;
     margin-top: 20px;
+  }
+
+  #score {
+    font-size: 20px;
+    margin-top: 10px;
+    color: #4dd2ff;
   }
 
   /* ================================
@@ -123,16 +139,6 @@
   opacity: 0.85;
 }
 
-/* ======================================================
-   EXPOSE GAME STARTERS (REQUIRED FOR GITHUB PAGES)
-====================================================== */
-window.startDino = startDino;
-window.startBrickBreaker = startBrickBreaker;
-window.startSnake = startSnake;
-window.startPacMan = startPacMan;
-window.startGalaga = startGalaga;
-window.startTetris = startTetris;
-
 </style>
 </head>
 
@@ -146,10 +152,10 @@ window.startTetris = startTetris;
   <div class="menu">
     <button onclick="startDino()">Dino Runner</button>
     <button onclick="startBrickBreaker()">Brick Breaker</button>
-    <button disabled>Snake</button>
-    <button disabled>Pac-Man</button>
-    <button disabled>Galaga</button>
-    <button disabled>Tetris</button>
+    <button onclick="startSnake()">Snake</button>
+    <button onclick="startPacMan()">Pac-Man</button>
+    <button onclick="startGalaga()">Galaga</button>
+    <button onclick="startTetris()">Tetris</button>
   </div>
 
   <!-- GAMEBOY INFO PANEL -->
@@ -195,10 +201,11 @@ window.startTetris = startTetris;
     <div class="stats">
       <p>🎮 Favorite Genres: Arcade · Runner · Puzzle</p>
       <p>⚙️ Tools: Unity · Web · Systems Design</p>
-      <p>🔥 Motto: “If it doesn’t feel right, it isn’t done.”</p>
+      <p>🔥 Motto: "If it doesn't feel right, it isn't done."</p>
     </div>
 
   </div>
+</div>
 </div>
 
 <!-- FOOTER -->
@@ -227,8 +234,10 @@ window.startTetris = startTetris;
   <canvas id="canvas" width="800" height="300"></canvas>
 </div>
 
-<script>
-//#region Core References
+<script defer>
+/* ======================================================
+   CORE REFERENCES
+====================================================== */
 const hub = document.getElementById("hub");
 const game = document.getElementById("game");
 const canvas = document.getElementById("canvas");
@@ -239,12 +248,14 @@ let running = false;
 let frame = null;
 let currentGame = null;
 
-//#region Shared Helpers
-function startGame(gameName) {
+/* ======================================================
+   SHARED HELPERS
+====================================================== */
+function startGame(name) {
   hub.classList.add("hidden");
   game.classList.remove("hidden");
   running = true;
-  currentGame = gameName;
+  currentGame = name;
 }
 
 function exitGame() {
@@ -254,423 +265,978 @@ function exitGame() {
   hub.classList.remove("hidden");
   game.classList.add("hidden");
 }
-//#endregion
-//#region Audio Manager (Global)
+
+/* ======================================================
+   AUDIO MANAGER
+====================================================== */
 const AudioManager = {
   ctx: null,
   unlocked: false,
 
-  init() {
-    if (this.ctx) return;
-    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
-  },
-
   unlock() {
     if (this.unlocked) return;
-    this.init();
-
-    // Play a silent sound to unlock
+    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
     const buffer = this.ctx.createBuffer(1, 1, 22050);
-    const source = this.ctx.createBufferSource();
-    source.buffer = buffer;
-    source.connect(this.ctx.destination);
-    source.start(0);
-
+    const src = this.ctx.createBufferSource();
+    src.buffer = buffer;
+    src.connect(this.ctx.destination);
+    src.start();
     this.unlocked = true;
   },
 
-  play(freq = 440, duration = 0.1, type = "square", volume = 0.2) {
+  play(freq, dur = 0.08, type = "square", vol = 0.2) {
     if (!this.unlocked) return;
-
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
-
     osc.type = type;
     osc.frequency.value = freq;
-
-    gain.gain.value = volume;
-
+    gain.gain.value = vol;
     osc.connect(gain);
     gain.connect(this.ctx.destination);
-
     osc.start();
-    osc.stop(this.ctx.currentTime + duration);
+    osc.stop(this.ctx.currentTime + dur);
   }
 };
 
-//#endregion
-
-//#region Dino Game
+/* ======================================================
+   GAME 1 — DINO RUNNER
+====================================================== */
 const DINO_GROUND_Y = 220;
-
-const dino = {
-  x: 50,
-  y: DINO_GROUND_Y,
-  w: 40,
-  h: 40,
-  vy: 0,
-  grounded: true,
-  jumpHeld: false,
-  coyoteTimer: 0,
-  bufferTimer: 0,
-  scaleX: 1,
-  scaleY: 1
-};
-
-const DINO_JUMP_VELOCITY = -10.5;
-const DINO_GRAVITY_UP = 0.45;
-const DINO_GRAVITY_RELEASE = 1.2;
-const DINO_GRAVITY_FALL = 1.6;
-const COYOTE_TIME = 6;
-const JUMP_BUFFER_TIME = 6;
-
-let dinoSpeed = 6;
+const dino = { x: 50, y: 220, w: 40, h: 40, vy: 0, grounded: true };
+let obstacles = [];
 let dinoScore = 0;
-let dinoObstacles = [];
+let obstacleTimer = 0;
 
 function startDino() {
   document.querySelector("#game h1").innerText = "Dino Runner";
+  document.querySelector("#game p").innerText = "SPACE = Jump · ESC = Exit";
   scoreText.innerText = "Score: 0";
   startGame("dino");
-  resetDino();
-  frame = requestAnimationFrame(dinoLoop);
-}
-
-function resetDino() {
   dino.y = DINO_GROUND_Y;
   dino.vy = 0;
   dino.grounded = true;
-  dino.jumpHeld = false;
-  dino.coyoteTimer = 0;
-  dino.bufferTimer = 0;
-  dino.scaleX = dino.scaleY = 1;
-  dinoSpeed = 6;
+  obstacles = [];
   dinoScore = 0;
-  dinoObstacles = [];
+  obstacleTimer = 0;
+  frame = requestAnimationFrame(dinoLoop);
 }
 
 function dinoLoop() {
   if (!running || currentGame !== "dino") return;
+
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  // Ground
-  ctx.fillStyle = "#4dd2ff";
-  ctx.fillRect(0, 260, canvas.width, 4);
-
-  // Timers
-  if (!dino.grounded && dino.coyoteTimer > 0) dino.coyoteTimer--;
-  if (dino.bufferTimer > 0) dino.bufferTimer--;
-
-  // Gravity & jump shaping
-  if (dino.vy < 0) {
-    dino.vy += dino.jumpHeld ? DINO_GRAVITY_UP : DINO_GRAVITY_RELEASE;
-  } else {
-    dino.vy += DINO_GRAVITY_FALL;
-  }
-
+  // Physics
+  dino.vy += 1.4;
   dino.y += dino.vy;
 
-  // Ground collision
   if (dino.y >= DINO_GROUND_Y) {
     dino.y = DINO_GROUND_Y;
     dino.vy = 0;
-    if (!dino.grounded) {
-      dino.scaleX = 1.1;
-      dino.scaleY = 0.9;
-    }
     dino.grounded = true;
-    dino.coyoteTimer = COYOTE_TIME;
-    if (dino.bufferTimer > 0) performDinoJump();
-  } else {
-    dino.grounded = false;
   }
 
-  // Recover squash/stretch
-  dino.scaleX += (1 - dino.scaleX) * 0.2;
-  dino.scaleY += (1 - dino.scaleY) * 0.2;
-
-  // Draw dino
-  ctx.save();
-  ctx.translate(dino.x + dino.w / 2, dino.y + dino.h / 2);
-  ctx.scale(dino.scaleX, dino.scaleY);
-  ctx.fillStyle = "#00ff88";
-  ctx.fillRect(-dino.w / 2, -dino.h / 2, dino.w, dino.h);
-  ctx.restore();
-
-  // Obstacles
-  if (Math.random() < 0.015) {
-    dinoObstacles.push({ x: canvas.width, y: 230, w: 20, h: 30 });
+  // Spawn obstacles
+  obstacleTimer++;
+  if (obstacleTimer > 80) {
+    obstacles.push({
+      x: canvas.width,
+      y: DINO_GROUND_Y,
+      w: 30,
+      h: 50
+    });
+    obstacleTimer = 0;
   }
 
-  ctx.fillStyle = "#ff4444";
-  dinoObstacles.forEach(o => {
-    o.x -= dinoSpeed;
-    ctx.fillRect(o.x, o.y, o.w, o.h);
-
-    if (
-      dino.x < o.x + o.w &&
-      dino.x + dino.w > o.x &&
-      dino.y < o.y + o.h &&
-      dino.y + dino.h > o.y
-    ) {
-      alert("Game Over! Score: " + dinoScore);
-      AudioManager.play(120, 0.3, "sawtooth", 0.4);
-      exitGame();
+  // Move and render obstacles
+  obstacles.forEach((obs, i) => {
+    obs.x -= 6;
+    
+    // Remove off-screen obstacles
+    if (obs.x + obs.w < 0) {
+      obstacles.splice(i, 1);
+      dinoScore++;
+      scoreText.innerText = `Score: ${dinoScore}`;
     }
+
+    // Collision detection
+    if (
+      dino.x < obs.x + obs.w &&
+      dino.x + dino.w > obs.x &&
+      dino.y < obs.y + obs.h &&
+      dino.y + dino.h > obs.y
+    ) {
+      AudioManager.play(200, 0.3);
+      exitGame();
+      alert(`Game Over! Score: ${dinoScore}`);
+      return;
+    }
+
+    // Draw obstacle
+    ctx.fillStyle = "#ff4444";
+    ctx.fillRect(obs.x, obs.y, obs.w, obs.h);
   });
 
-  dinoObstacles = dinoObstacles.filter(o => o.x + o.w > 0);
+  // Draw ground
+  ctx.fillStyle = "#4dd2ff";
+  ctx.fillRect(0, 260, canvas.width, 4);
 
-  dinoScore++;
-  dinoSpeed += 0.001;
-  scoreText.innerText = "Score: " + dinoScore;
+  // Draw dino
+  ctx.fillStyle = "#00ff88";
+  ctx.fillRect(dino.x, dino.y, dino.w, dino.h);
 
   frame = requestAnimationFrame(dinoLoop);
 }
 
-function performDinoJump() {
-  dino.vy = DINO_JUMP_VELOCITY;
-  dino.jumpHeld = true;
-  dino.coyoteTimer = 0;
-  dino.bufferTimer = 0;
-  dino.scaleX = 0.92;
-  dino.scaleY = 1.08;
-
-  AudioManager.play(600, 0.08, "square", 0.25);
-}
-
-//#endregion
-
-//#region Brick Breaker
-let brickScore = 0;
+/* ======================================================
+   GAME 2 — BRICK BREAKER
+====================================================== */
 let ballLaunched = false;
-
-// Paddle
-const paddle = {
-  w: 110,
-  h: 14,
-  x: canvas.width / 2 - 55,
-  y: canvas.height - 30,
-  speed: 9,
-  dx: 0
-};
-
-// Ball
-const ball = {
-  x: canvas.width / 2,
-  y: canvas.height - 50,
-  r: 8,
-  dx: 4,
-  dy: -4
-};
-
-// Bricks
-const brickCfg = {
-  rows: 5,
-  cols: 8,
-  w: 80,
-  h: 20,
-  pad: 10,
-  offX: 35,
-  offY: 40
-};
-
+const paddle = { x: 350, y: 260, w: 110, h: 14, speed: 8 };
+const ball = { x: 400, y: 240, r: 8, dx: 4, dy: -4 };
 let bricks = [];
+let brickScore = 0;
+const keys = {};
 
 function startBrickBreaker() {
   document.querySelector("#game h1").innerText = "Brick Breaker";
+  document.querySelector("#game p").innerText = "ARROW KEYS = Move · SPACE = Launch · ESC = Exit";
   scoreText.innerText = "Score: 0";
   startGame("brick");
-  resetBrickBreaker();
-  frame = requestAnimationFrame(brickLoop);
-}
-
-function resetBrickBreaker() {
+  ballLaunched = false;
   brickScore = 0;
-
-  paddle.x = canvas.width / 2 - paddle.w / 2;
-  paddle.dx = 0;
-
-  ball.x = canvas.width / 2;
-  ball.y = canvas.height - 50;
+  paddle.x = 350;
+  ball.x = 400;
+  ball.y = 240;
   ball.dx = 4;
   ball.dy = -4;
-
+  
+  // Create bricks
   bricks = [];
-  for (let r = 0; r < brickCfg.rows; r++) {
-    for (let c = 0; c < brickCfg.cols; c++) {
+  const rows = 5;
+  const cols = 8;
+  const brickW = 90;
+  const brickH = 20;
+  const padding = 10;
+  const offsetX = 35;
+  const offsetY = 30;
+
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
       bricks.push({
-        x: brickCfg.offX + c * (brickCfg.w + brickCfg.pad),
-        y: brickCfg.offY + r * (brickCfg.h + brickCfg.pad),
+        x: offsetX + c * (brickW + padding),
+        y: offsetY + r * (brickH + padding),
+        w: brickW,
+        h: brickH,
         alive: true
       });
     }
   }
-
-  ballLaunched = false;
+  
+  frame = requestAnimationFrame(brickLoop);
 }
 
 function brickLoop() {
   if (!running || currentGame !== "brick") return;
+
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  // Paddle
+  // Smooth paddle movement
+  if (keys["ArrowLeft"] && paddle.x > 0) {
+    paddle.x -= paddle.speed;
+  }
+  if (keys["ArrowRight"] && paddle.x < canvas.width - paddle.w) {
+    paddle.x += paddle.speed;
+  }
+
+  // Draw paddle
   ctx.fillStyle = "#00ff88";
   ctx.fillRect(paddle.x, paddle.y, paddle.w, paddle.h);
 
-  // Ball
-  ctx.fillStyle = "#ffffff";
-  ctx.beginPath();
-  ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Bricks
-  bricks.forEach(b => {
-    if (!b.alive) return;
-    ctx.fillStyle = "#ff4444";
-    ctx.fillRect(b.x, b.y, brickCfg.w, brickCfg.h);
-
-    if (
-      ballLaunched &&
-      ball.x > b.x &&
-      ball.x < b.x + brickCfg.w &&
-      ball.y - ball.r < b.y + brickCfg.h &&
-      ball.y + ball.r > b.y
-    ) {
-      ball.dy *= -1;
-      b.alive = false;
-      brickScore += 10;
-      AudioManager.play(800, 0.07, "triangle", 0.25);
-      scoreText.innerText = "Score: " + brickScore;
-    }
-  });
-
-  // Ball behavior
+  // Ball logic
   if (!ballLaunched) {
-    // Stick to paddle
     ball.x = paddle.x + paddle.w / 2;
     ball.y = paddle.y - ball.r;
   } else {
     ball.x += ball.dx;
     ball.y += ball.dy;
-  }
 
-  // Wall collision
-  if (ballLaunched) {
-    if (ball.x + ball.r > canvas.width || ball.x - ball.r < 0) {
+    // Wall collisions
+    if (ball.x - ball.r < 0 || ball.x + ball.r > canvas.width) {
       ball.dx *= -1;
-       AudioManager.play(200, 0.04, "square", 0.15);
+      AudioManager.play(400);
     }
     if (ball.y - ball.r < 0) {
       ball.dy *= -1;
-       AudioManager.play(200, 0.04, "square", 0.15);
+      AudioManager.play(400);
     }
-   
+
+    // Paddle collision
+    if (
+      ball.y + ball.r > paddle.y &&
+      ball.y - ball.r < paddle.y + paddle.h &&
+      ball.x > paddle.x &&
+      ball.x < paddle.x + paddle.w
+    ) {
+      ball.dy = -Math.abs(ball.dy);
+      AudioManager.play(500);
+    }
+
+    // Brick collisions
+    bricks.forEach(brick => {
+      if (!brick.alive) return;
+      
+      if (
+        ball.x + ball.r > brick.x &&
+        ball.x - ball.r < brick.x + brick.w &&
+        ball.y + ball.r > brick.y &&
+        ball.y - ball.r < brick.y + brick.h
+      ) {
+        brick.alive = false;
+        ball.dy *= -1;
+        brickScore += 10;
+        scoreText.innerText = `Score: ${brickScore}`;
+        AudioManager.play(600);
+      }
+    });
+
+    // Game over if ball falls
+    if (ball.y - ball.r > canvas.height) {
+      AudioManager.play(200, 0.3);
+      exitGame();
+      alert(`Game Over! Score: ${brickScore}`);
+      return;
+    }
+
+    // Win condition
+    if (bricks.every(b => !b.alive)) {
+      exitGame();
+      alert(`You Won! Score: ${brickScore}`);
+      return;
+    }
   }
 
-  // Paddle collision
-  if (
-    ballLaunched &&
-    ball.x > paddle.x &&
-    ball.x < paddle.x + paddle.w &&
-    ball.y + ball.r > paddle.y
-  ) {
-    const hitPos = (ball.x - paddle.x) / paddle.w - 0.5;
-    ball.dx = hitPos * 8;
-    ball.dy = -Math.abs(ball.dy);
-    AudioManager.play(300, 0.05, "square", 0.2);
+  // Draw ball
+  ctx.fillStyle = "#fff";
+  ctx.beginPath();
+  ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI * 2);
+  ctx.fill();
 
-  }
-
-  // Lose condition
-  if (ballLaunched && ball.y - ball.r > canvas.height) {
-    AudioManager.play(100, 0.4, "sawtooth", 0.4);
-    alert("Game Over! Score: " + brickScore);
-    exitGame();
-    return;
-  }
-
-  // Win condition
-  if (bricks.every(b => !b.alive)) {
-    alert("You Win!");
-    resetBrickBreaker();
-  }
-
-  // Paddle movement
-  paddle.x += paddle.dx;
-  paddle.x = Math.max(0, Math.min(canvas.width - paddle.w, paddle.x));
+  // Draw bricks
+  bricks.forEach(brick => {
+    if (brick.alive) {
+      ctx.fillStyle = "#ff8a8a";
+      ctx.fillRect(brick.x, brick.y, brick.w, brick.h);
+      ctx.strokeStyle = "#4dd2ff";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(brick.x, brick.y, brick.w, brick.h);
+    }
+  });
 
   frame = requestAnimationFrame(brickLoop);
 }
-//#endregion
 
 /* ======================================================
-   PLACEHOLDERS FOR FUTURE GAMES
+   GAME 3 — SNAKE
 ====================================================== */
-// GAME 3 — SNAKE
+const GRID = 20;
+const TILE = 15;
+let snake = [];
+let snakeDir = { x: 1, y: 0 };
+let food = { x: 5, y: 5 };
+let snakeScore = 0;
+let walls = [];
+
 function startSnake() {
-  console.log("Snake game not implemented yet");
+  document.querySelector("#game h1").innerText = "Snake";
+  document.querySelector("#game p").innerText = "ARROW KEYS = Move · ESC = Exit";
+  scoreText.innerText = "Score: 0";
+  startGame("snake");
+  snake = [{ x: 10, y: 10 }];
+  snakeDir = { x: 1, y: 0 };
+  snakeScore = 0;
+  
+  generateWalls();
+  spawnFood();
+  
+  frame = requestAnimationFrame(snakeLoop);
 }
 
-// GAME 4 — PAC-MAN
-function startPacMan() {
-  console.log("Pac-Man game not implemented yet");
+function generateWalls() {
+  walls = [];
+  const gridWidth = canvas.width / TILE;
+  const gridHeight = canvas.height / TILE;
+  const numWalls = 15;
+  
+  for (let i = 0; i < numWalls; i++) {
+    let x, y;
+    let validPosition = false;
+    
+    while (!validPosition) {
+      x = Math.floor(Math.random() * gridWidth);
+      y = Math.floor(Math.random() * gridHeight);
+      
+      if (
+        !(x === 10 && y === 10) && 
+        x > 1 && x < gridWidth - 2 && 
+        y > 1 && y < gridHeight - 2
+      ) {
+        validPosition = true;
+      }
+    }
+    
+    walls.push({ x, y });
+  }
 }
 
-// GAME 5 — GALAGA
-function startGalaga() {
-  console.log("Galaga game not implemented yet");
+function spawnFood() {
+  const gridWidth = canvas.width / TILE;
+  const gridHeight = canvas.height / TILE;
+  let validPosition = false;
+  
+  while (!validPosition) {
+    food.x = Math.floor(Math.random() * gridWidth);
+    food.y = Math.floor(Math.random() * gridHeight);
+    
+    validPosition = true;
+    
+    for (let segment of snake) {
+      if (food.x === segment.x && food.y === segment.y) {
+        validPosition = false;
+        break;
+      }
+    }
+    
+    for (let wall of walls) {
+      if (food.x === wall.x && food.y === wall.y) {
+        validPosition = false;
+        break;
+      }
+    }
+  }
 }
 
-// GAME 6 — TETRIS
-function startTetris() {
-  console.log("Tetris game not implemented yet");
-}
+function snakeLoop() {
+  if (!running || currentGame !== "snake") return;
 
-/* ======================================================
-   INPUT ROUTING
-====================================================== */
-document.addEventListener("keydown", e => {
-  if (!running) return;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-   AudioManager.unlock();
-  if (currentGame === "dino") {
-    if (e.code === "Space") {
-      if (dino.grounded || dino.coyoteTimer > 0) performDinoJump();
-      else dino.bufferTimer = JUMP_BUFFER_TIME;
+  const head = {
+    x: snake[0].x + snakeDir.x,
+    y: snake[0].y + snakeDir.y
+  };
+
+  if (
+    head.x < 0 || 
+    head.x >= canvas.width / TILE || 
+    head.y < 0 || 
+    head.y >= canvas.height / TILE
+  ) {
+    AudioManager.play(200, 0.3);
+    exitGame();
+    alert(`Game Over! Score: ${snakeScore}`);
+    return;
+  }
+
+  for (let wall of walls) {
+    if (head.x === wall.x && head.y === wall.y) {
+      AudioManager.play(200, 0.3);
+      exitGame();
+      alert(`Game Over! Score: ${snakeScore}`);
+      return;
     }
   }
 
-  if (currentGame === "brick") {
-
-  // 🔥 THIS IS THE MISSING LINE
-  if (!ballLaunched) {
-    ballLaunched = true;
-    AudioManager.play(500, 0.1, "square", 0.25);
+  for (let segment of snake) {
+    if (head.x === segment.x && head.y === segment.y) {
+      AudioManager.play(200, 0.3);
+      exitGame();
+      alert(`Game Over! Score: ${snakeScore}`);
+      return;
+    }
   }
 
-  if (e.code === "ArrowLeft") paddle.dx = -paddle.speed;
-  if (e.code === "ArrowRight") paddle.dx = paddle.speed;
+  snake.unshift(head);
+
+  if (head.x === food.x && head.y === food.y) {
+    snakeScore += 10;
+    scoreText.innerText = `Score: ${snakeScore}`;
+    AudioManager.play(600);
+    spawnFood();
+  } else {
+    snake.pop();
+  }
+
+  ctx.strokeStyle = "#4dd2ff";
+  ctx.lineWidth = 3;
+  ctx.strokeRect(0, 0, canvas.width, canvas.height);
+
+  ctx.fillStyle = "#ff8a8a";
+  walls.forEach(wall => {
+    ctx.fillRect(wall.x * TILE, wall.y * TILE, TILE, TILE);
+  });
+
+  ctx.fillStyle = "#ffff00";
+  ctx.fillRect(food.x * TILE, food.y * TILE, TILE, TILE);
+
+  snake.forEach((s, i) => {
+    if (i === 0) {
+      ctx.fillStyle = "#4dd2ff";
+    } else {
+      ctx.fillStyle = "#00ff88";
+    }
+    ctx.fillRect(s.x * TILE, s.y * TILE, TILE - 1, TILE - 1);
+  });
+
+  setTimeout(() => frame = requestAnimationFrame(snakeLoop), 120);
 }
+
+/* ======================================================
+   GAME 4 — PAC-MAN
+====================================================== */
+const PAC_TILE = 20;
+let pacman = { x: 1, y: 1, dir: { x: 0, y: 0 }, nextDir: { x: 0, y: 0 } };
+let ghosts = [];
+let dots = [];
+let pacScore = 0;
+let pacMaze = [];
+
+function startPacMan() {
+  document.querySelector("#game h1").innerText = "Pac-Man";
+  document.querySelector("#game p").innerText = "ARROW KEYS = Move · ESC = Exit";
+  scoreText.innerText = "Score: 0";
+  startGame("pacman");
+  
+  // Simple maze (1 = wall, 0 = path)
+  pacMaze = [
+    [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+    [1,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,1],
+    [1,0,1,1,0,1,1,1,0,1,1,0,1,1,1,0,1,1,0,1],
+    [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+    [1,0,1,1,0,1,0,1,1,1,1,1,1,0,1,0,1,1,0,1],
+    [1,0,0,0,0,1,0,0,0,1,1,0,0,0,1,0,0,0,0,1],
+    [1,1,1,1,0,1,1,1,0,1,1,0,1,1,1,0,1,1,1,1],
+    [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+    [1,0,1,1,0,1,1,1,1,0,0,1,1,1,1,0,1,1,0,1],
+    [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+    [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+  ];
+  
+  pacman = { x: 1, y: 1, dir: { x: 0, y: 0 }, nextDir: { x: 0, y: 0 } };
+  pacScore = 0;
+  
+  // Create dots
+  dots = [];
+  for (let y = 0; y < pacMaze.length; y++) {
+    for (let x = 0; x < pacMaze[y].length; x++) {
+      if (pacMaze[y][x] === 0) {
+        dots.push({ x, y, eaten: false });
+      }
+    }
+  }
+  
+  // Create ghosts
+  ghosts = [
+    { x: 9, y: 5, dir: { x: 1, y: 0 }, color: "#ff0000" },
+    { x: 10, y: 5, dir: { x: -1, y: 0 }, color: "#ffb8ff" },
+    { x: 9, y: 6, dir: { x: 0, y: 1 }, color: "#00ffff" }
+  ];
+  
+  frame = requestAnimationFrame(pacLoop);
+}
+
+function canMove(x, y) {
+  if (y < 0 || y >= pacMaze.length || x < 0 || x >= pacMaze[0].length) return false;
+  return pacMaze[y][x] === 0;
+}
+
+function pacLoop() {
+  if (!running || currentGame !== "pacman") return;
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Try to change direction
+  const nextX = pacman.x + pacman.nextDir.x;
+  const nextY = pacman.y + pacman.nextDir.y;
+  if (canMove(nextX, nextY)) {
+    pacman.dir = { ...pacman.nextDir };
+  }
+
+  // Move pacman (every few frames for slower movement)
+  if (frame % 8 === 0) {
+    const newX = pacman.x + pacman.dir.x;
+    const newY = pacman.y + pacman.dir.y;
+    if (canMove(newX, newY)) {
+      pacman.x = newX;
+      pacman.y = newY;
+    }
+    
+    // Move ghosts
+    ghosts.forEach(ghost => {
+      const possibleDirs = [
+        { x: 1, y: 0 }, { x: -1, y: 0 }, { x: 0, y: 1 }, { x: 0, y: -1 }
+      ];
+      
+      const validDirs = possibleDirs.filter(d => 
+        canMove(ghost.x + d.x, ghost.y + d.y)
+      );
+      
+      if (validDirs.length > 0) {
+        if (Math.random() < 0.3) {
+          ghost.dir = validDirs[Math.floor(Math.random() * validDirs.length)];
+        }
+        
+        const newGhostX = ghost.x + ghost.dir.x;
+        const newGhostY = ghost.y + ghost.dir.y;
+        if (canMove(newGhostX, newGhostY)) {
+          ghost.x = newGhostX;
+          ghost.y = newGhostY;
+        }
+      }
+    });
+  }
+
+  // Check dot collision
+  dots.forEach(dot => {
+    if (!dot.eaten && dot.x === pacman.x && dot.y === pacman.y) {
+      dot.eaten = true;
+      pacScore += 10;
+      scoreText.innerText = `Score: ${pacScore}`;
+      AudioManager.play(800, 0.05);
+    }
+  });
+
+  // Check ghost collision
+  for (let ghost of ghosts) {
+    if (ghost.x === pacman.x && ghost.y === pacman.y) {
+      AudioManager.play(200, 0.3);
+      exitGame();
+      alert(`Game Over! Score: ${pacScore}`);
+      return;
+    }
+  }
+
+  // Win condition
+  if (dots.every(d => d.eaten)) {
+    exitGame();
+    alert(`You Won! Score: ${pacScore}`);
+    return;
+  }
+
+  // Draw maze
+  ctx.fillStyle = "#4dd2ff";
+  for (let y = 0; y < pacMaze.length; y++) {
+    for (let x = 0; x < pacMaze[y].length; x++) {
+      if (pacMaze[y][x] === 1) {
+        ctx.fillRect(x * PAC_TILE, y * PAC_TILE, PAC_TILE, PAC_TILE);
+      }
+    }
+  }
+
+  // Draw dots
+  ctx.fillStyle = "#ffff00";
+  dots.forEach(dot => {
+    if (!dot.eaten) {
+      ctx.beginPath();
+      ctx.arc(dot.x * PAC_TILE + PAC_TILE / 2, dot.y * PAC_TILE + PAC_TILE / 2, 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  });
+
+  // Draw ghosts
+  ghosts.forEach(ghost => {
+    ctx.fillStyle = ghost.color;
+    ctx.beginPath();
+    ctx.arc(ghost.x * PAC_TILE + PAC_TILE / 2, ghost.y * PAC_TILE + PAC_TILE / 2, 8, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  // Draw pacman
+  ctx.fillStyle = "#ffff00";
+  ctx.beginPath();
+  ctx.arc(pacman.x * PAC_TILE + PAC_TILE / 2, pacman.y * PAC_TILE + PAC_TILE / 2, 9, 0.2 * Math.PI, 1.8 * Math.PI);
+  ctx.lineTo(pacman.x * PAC_TILE + PAC_TILE / 2, pacman.y * PAC_TILE + PAC_TILE / 2);
+  ctx.fill();
+
+  frame = requestAnimationFrame(pacLoop);
+}
+
+/* ======================================================
+   GAME 5 — GALAGA
+====================================================== */
+let player = { x: 380, y: 260, w: 40, h: 20, speed: 6 };
+let bullets = [];
+let enemies = [];
+let galagaScore = 0;
+let enemyShootTimer = 0;
+
+function startGalaga() {
+  document.querySelector("#game h1").innerText = "Galaga";
+  document.querySelector("#game p").innerText = "ARROW KEYS = Move · SPACE = Shoot · ESC = Exit";
+  scoreText.innerText = "Score: 0";
+  startGame("galaga");
+  
+  player = { x: 380, y: 260, w: 40, h: 20, speed: 6 };
+  bullets = [];
+  galagaScore = 0;
+  enemyShootTimer = 0;
+  
+  // Create enemy formation
+  enemies = [];
+  for (let row = 0; row < 3; row++) {
+    for (let col = 0; col < 8; col++) {
+      enemies.push({
+        x: 100 + col * 80,
+        y: 40 + row * 50,
+        w: 30,
+        h: 30,
+        alive: true,
+        moveDir: 1
+      });
+    }
+  }
+  
+  frame = requestAnimationFrame(galagaLoop);
+}
+
+function galagaLoop() {
+  if (!running || currentGame !== "galaga") return;
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Player movement
+  if (keys["ArrowLeft"] && player.x > 0) {
+    player.x -= player.speed;
+  }
+  if (keys["ArrowRight"] && player.x < canvas.width - player.w) {
+    player.x += player.speed;
+  }
+
+  // Move bullets
+  bullets.forEach((bullet, i) => {
+    bullet.y -= 8;
+    if (bullet.y < 0) {
+      bullets.splice(i, 1);
+    }
+  });
+
+  // Move enemies
+  let changeDir = false;
+  enemies.forEach(enemy => {
+    if (enemy.alive) {
+      enemy.x += enemy.moveDir * 2;
+      if (enemy.x <= 0 || enemy.x >= canvas.width - enemy.w) {
+        changeDir = true;
+      }
+    }
+  });
+
+  if (changeDir) {
+    enemies.forEach(enemy => {
+      enemy.moveDir *= -1;
+      enemy.y += 20;
+    });
+  }
+
+  // Bullet-enemy collision
+  bullets.forEach((bullet, bi) => {
+    enemies.forEach((enemy, ei) => {
+      if (enemy.alive &&
+          bullet.x > enemy.x &&
+          bullet.x < enemy.x + enemy.w &&
+          bullet.y > enemy.y &&
+          bullet.y < enemy.y + enemy.h) {
+        enemy.alive = false;
+        bullets.splice(bi, 1);
+        galagaScore += 100;
+        scoreText.innerText = `Score: ${galagaScore}`;
+        AudioManager.play(700);
+      }
+    });
+  });
+
+  // Check if enemy reached bottom or all destroyed
+  for (let enemy of enemies) {
+    if (enemy.alive && enemy.y + enemy.h > player.y) {
+      AudioManager.play(200, 0.3);
+      exitGame();
+      alert(`Game Over! Score: ${galagaScore}`);
+      return;
+    }
+  }
+
+  if (enemies.every(e => !e.alive)) {
+    exitGame();
+    alert(`You Won! Score: ${galagaScore}`);
+    return;
+  }
+
+  // Draw player
+  ctx.fillStyle = "#00ff88";
+  ctx.fillRect(player.x, player.y, player.w, player.h);
+  ctx.fillRect(player.x + 15, player.y - 10, 10, 10);
+
+  // Draw bullets
+  ctx.fillStyle = "#ffff00";
+  bullets.forEach(bullet => {
+    ctx.fillRect(bullet.x - 2, bullet.y, 4, 10);
+  });
+
+  // Draw enemies
+  enemies.forEach(enemy => {
+    if (enemy.alive) {
+      ctx.fillStyle = "#ff4444";
+      ctx.fillRect(enemy.x, enemy.y, enemy.w, enemy.h);
+      ctx.fillStyle = "#fff";
+      ctx.fillRect(enemy.x + 5, enemy.y + 5, 8, 8);
+      ctx.fillRect(enemy.x + 17, enemy.y + 5, 8, 8);
+    }
+  });
+
+  frame = requestAnimationFrame(galagaLoop);
+}
+
+/* ======================================================
+   GAME 6 — TETRIS
+====================================================== */
+const TETRIS_COLS = 10;
+const TETRIS_ROWS = 15;
+const TETRIS_TILE = 20;
+let tetrisGrid = [];
+let currentPiece = null;
+let tetrisScore = 0;
+let dropTimer = 0;
+let dropSpeed = 30;
+
+const SHAPES = [
+  [[1,1,1,1]], // I
+  [[1,1],[1,1]], // O
+  [[0,1,0],[1,1,1]], // T
+  [[1,0,0],[1,1,1]], // L
+  [[0,0,1],[1,1,1]], // J
+  [[0,1,1],[1,1,0]], // S
+  [[1,1,0],[0,1,1]]  // Z
+];
+
+const COLORS = ["#00ffff", "#ffff00", "#ff00ff", "#ff8800", "#0000ff", "#00ff00", "#ff0000"];
+
+function startTetris() {
+  document.querySelector("#game h1").innerText = "Tetris";
+  document.querySelector("#game p").innerText = "ARROW KEYS = Move/Rotate · SPACE = Drop · ESC = Exit";
+  scoreText.innerText = "Score: 0";
+  startGame("tetris");
+  
+  tetrisGrid = Array(TETRIS_ROWS).fill(null).map(() => Array(TETRIS_COLS).fill(0));
+  tetrisScore = 0;
+  dropTimer = 0;
+  dropSpeed = 30;
+  spawnPiece();
+  
+  frame = requestAnimationFrame(tetrisLoop);
+}
+
+function spawnPiece() {
+  const shapeIndex = Math.floor(Math.random() * SHAPES.length);
+  currentPiece = {
+    shape: SHAPES[shapeIndex],
+    color: COLORS[shapeIndex],
+    x: Math.floor(TETRIS_COLS / 2) - 1,
+    y: 0
+  };
+}
+
+function canPlace(piece, offsetX = 0, offsetY = 0) {
+  for (let y = 0; y < piece.shape.length; y++) {
+    for (let x = 0; x < piece.shape[y].length; x++) {
+      if (piece.shape[y][x]) {
+        const newX = piece.x + x + offsetX;
+        const newY = piece.y + y + offsetY;
+        
+        if (newX < 0 || newX >= TETRIS_COLS || newY >= TETRIS_ROWS) return false;
+        if (newY >= 0 && tetrisGrid[newY][newX]) return false;
+      }
+    }
+  }
+  return true;
+}
+
+function placePiece() {
+  for (let y = 0; y < currentPiece.shape.length; y++) {
+    for (let x = 0; x < currentPiece.shape[y].length; x++) {
+      if (currentPiece.shape[y][x]) {
+        const gridY = currentPiece.y + y;
+        if (gridY >= 0) {
+          tetrisGrid[gridY][currentPiece.x + x] = currentPiece.color;
+        }
+      }
+    }
+  }
+  
+  // Check for complete lines
+  for (let y = TETRIS_ROWS - 1; y >= 0; y--) {
+    if (tetrisGrid[y].every(cell => cell !== 0)) {
+      tetrisGrid.splice(y, 1);
+      tetrisGrid.unshift(Array(TETRIS_COLS).fill(0));
+      tetrisScore += 100;
+      scoreText.innerText = `Score: ${tetrisScore}`;
+      AudioManager.play(600);
+      y++;
+    }
+  }
+  
+  spawnPiece();
+  
+  if (!canPlace(currentPiece)) {
+    AudioManager.play(200, 0.3);
+    exitGame();
+    alert(`Game Over! Score: ${tetrisScore}`);
+  }
+}
+
+function rotatePiece() {
+  const rotated = currentPiece.shape[0].map((_, i) =>
+    currentPiece.shape.map(row => row[i]).reverse()
+  );
+  
+  const oldShape = currentPiece.shape;
+  currentPiece.shape = rotated;
+  
+  if (!canPlace(currentPiece)) {
+    currentPiece.shape = oldShape;
+  } else {
+    AudioManager.play(500, 0.05);
+  }
+}
+
+function tetrisLoop() {
+  if (!running || currentGame !== "tetris") return;
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  dropTimer++;
+  if (dropTimer > dropSpeed) {
+    if (canPlace(currentPiece, 0, 1)) {
+      currentPiece.y++;
+    } else {
+      placePiece();
+    }
+    dropTimer = 0;
+  }
+
+  // Draw grid
+  ctx.strokeStyle = "#333";
+  for (let y = 0; y < TETRIS_ROWS; y++) {
+    for (let x = 0; x < TETRIS_COLS; x++) {
+      if (tetrisGrid[y][x]) {
+        ctx.fillStyle = tetrisGrid[y][x];
+        ctx.fillRect(x * TETRIS_TILE + 250, y * TETRIS_TILE, TETRIS_TILE - 1, TETRIS_TILE - 1);
+      }
+      ctx.strokeRect(x * TETRIS_TILE + 250, y * TETRIS_TILE, TETRIS_TILE, TETRIS_TILE);
+    }
+  }
+
+  // Draw current piece
+  if (currentPiece) {
+    ctx.fillStyle = currentPiece.color;
+    for (let y = 0; y < currentPiece.shape.length; y++) {
+      for (let x = 0; x < currentPiece.shape[y].length; x++) {
+        if (currentPiece.shape[y][x]) {
+          ctx.fillRect(
+            (currentPiece.x + x) * TETRIS_TILE + 250,
+            (currentPiece.y + y) * TETRIS_TILE,
+            TETRIS_TILE - 1,
+            TETRIS_TILE - 1
+          );
+        }
+      }
+    }
+  }
+
+  frame = requestAnimationFrame(tetrisLoop);
+}
+
+/* ======================================================
+   INPUT
+====================================================== */
+document.addEventListener("keydown", e => {
+  AudioManager.unlock();
+
+  keys[e.code] = true;
+
+  if (currentGame === "dino" && e.code === "Space" && dino.grounded) {
+    dino.vy = -18;
+    dino.grounded = false;
+    AudioManager.play(600);
+  }
+
+  if (currentGame === "brick") {
+    if (e.code === "Space" && !ballLaunched) {
+      ballLaunched = true;
+      AudioManager.play(500);
+    }
+  }
+
+  if (currentGame === "snake") {
+    if (e.code === "ArrowUp" && snakeDir.y !== 1) snakeDir = { x: 0, y: -1 };
+    if (e.code === "ArrowDown" && snakeDir.y !== -1) snakeDir = { x: 0, y: 1 };
+    if (e.code === "ArrowLeft" && snakeDir.x !== 1) snakeDir = { x: -1, y: 0 };
+    if (e.code === "ArrowRight" && snakeDir.x !== -1) snakeDir = { x: 1, y: 0 };
+  }
+
+  if (currentGame === "pacman") {
+    if (e.code === "ArrowUp") pacman.nextDir = { x: 0, y: -1 };
+    if (e.code === "ArrowDown") pacman.nextDir = { x: 0, y: 1 };
+    if (e.code === "ArrowLeft") pacman.nextDir = { x: -1, y: 0 };
+    if (e.code === "ArrowRight") pacman.nextDir = { x: 1, y: 0 };
+  }
+
+  if (currentGame === "galaga") {
+    if (e.code === "Space") {
+      bullets.push({ x: player.x + player.w / 2, y: player.y });
+      AudioManager.play(800, 0.1);
+    }
+  }
+
+  if (currentGame === "tetris") {
+    if (e.code === "ArrowLeft" && canPlace(currentPiece, -1, 0)) {
+      currentPiece.x--;
+    }
+    if (e.code === "ArrowRight" && canPlace(currentPiece, 1, 0)) {
+      currentPiece.x++;
+    }
+    if (e.code === "ArrowDown" && canPlace(currentPiece, 0, 1)) {
+      currentPiece.y++;
+    }
+    if (e.code === "ArrowUp") {
+      rotatePiece();
+    }
+    if (e.code === "Space") {
+      while (canPlace(currentPiece, 0, 1)) {
+        currentPiece.y++;
+      }
+      placePiece();
+      dropTimer = 0;
+    }
+  }
 
   if (e.code === "Escape") exitGame();
 });
 
 document.addEventListener("keyup", e => {
-  if (currentGame === "dino" && e.code === "Space") {
-    dino.jumpHeld = false;
-  }
-
-  if (currentGame === "brick") {
-    if (e.code === "ArrowLeft" || e.code === "ArrowRight") paddle.dx = 0;
-  }
+  keys[e.code] = false;
 });
 
-document.addEventListener("mousedown", () => {
-  AudioManager.unlock();
-})
-
+/* ======================================================
+   EXPOSE FOR onclick
+====================================================== */
+window.startDino = startDino;
+window.startBrickBreaker = startBrickBreaker;
+window.startSnake = startSnake;
+window.startPacMan = startPacMan;
+window.startGalaga = startGalaga;
+window.startTetris = startTetris;
 </script>
+
 
 </body>
 </html>
